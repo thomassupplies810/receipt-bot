@@ -45,11 +45,30 @@ def check_cooldown(user_id):
     return 0
 
 # =========================
-# 🔥 FIXED DOCX ENGINE
+# 🔥 RANDOM DATE GENERATOR
+# =========================
+def generate_realistic_datetime():
+    now = datetime.datetime.now()
+
+    # Random day within last 60 days
+    days_ago = random.randint(0, 60)
+    random_date = now - datetime.timedelta(days=days_ago)
+
+    # Random hour/minute
+    hour = random.randint(8, 21)
+    minute = random.randint(0, 59)
+
+    random_date = random_date.replace(hour=hour, minute=minute)
+
+    return random_date
+
+# =========================
+# 🔥 FIXED DOCX ENGINE (TABLE SUPPORT)
 # =========================
 def generate_receipt(template_path, output_path, data, make_bold=False):
     doc = Document(template_path)
 
+    # Paragraphs
     for paragraph in doc.paragraphs:
         full_text = paragraph.text
 
@@ -63,6 +82,24 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
 
             if make_bold:
                 run.bold = True
+
+    # 🔥 Tables (IMPORTANT)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    full_text = paragraph.text
+
+                    for key, value in data.items():
+                        if key in full_text:
+                            full_text = full_text.replace(key, value)
+
+                    if paragraph.text != full_text:
+                        paragraph.clear()
+                        run = paragraph.add_run(full_text)
+
+                        if make_bold:
+                            run.bold = True
 
     doc.save(output_path)
 
@@ -85,9 +122,9 @@ async def on_ready():
 @bot.tree.command(name="receipt", description="Generate a professional receipt")
 @app_commands.describe(
     type="Select receipt type",
-    product_name="Product name (e.g. AirPods Pro 2)",
-    price="Item price (numbers only)",
-    amount_paid="Cash paid (only used for cologne)"
+    product_name="Product name",
+    price="Item price",
+    amount_paid="Cash paid (cologne only)"
 )
 @app_commands.choices(type=[
     app_commands.Choice(name="Cologne Receipt", value="cologne"),
@@ -106,7 +143,7 @@ async def receipt(
     # Role check
     if not has_access(user):
         return await interaction.response.send_message(
-            "Access restricted to Generator members.",
+            "Access restricted.",
             ephemeral=True
         )
 
@@ -114,18 +151,25 @@ async def receipt(
     remaining = check_cooldown(user.id)
     if remaining > 0:
         return await interaction.response.send_message(
-            f"Please wait {remaining}s before generating another receipt.",
+            f"Wait {remaining}s before generating again.",
             ephemeral=True
         )
 
     await interaction.response.send_message(
-        "⏳ Generating your receipt...",
+        "⏳ Generating receipt...",
         ephemeral=True
     )
 
     await asyncio.sleep(1.2)
 
     price = float(price)
+
+    # 🔥 Generate realistic datetime
+    dt = generate_realistic_datetime()
+
+    apple_date = dt.strftime("%b %d, %Y %I:%M %p")
+    cologne_date = dt.strftime("%m/%d/%Y")
+    cologne_time = dt.strftime("%I:%M %p")
 
     # =========================
     # COLOGNE
@@ -148,8 +192,8 @@ async def receipt(
             "TOTAL_HERE": f"{total:.2f}",
             "CASH_HERE": f"{cash:.2f}",
             "CHANGE_HERE": f"{change:.2f}",
-            "DATE_HERE": datetime.datetime.now().strftime("%m/%d/%Y"),
-            "TIME_HERE": datetime.datetime.now().strftime("%I:%M %p"),
+            "DATE_HERE": cologne_date,
+            "TIME_HERE": cologne_time,
             "BARCODE_NUMBER_HERE": barcode
         }
 
@@ -163,7 +207,7 @@ async def receipt(
         )
 
     # =========================
-    # AIRPODS / APPLE
+    # AIRPODS
     # =========================
     elif type.value == "airpods":
 
@@ -182,7 +226,7 @@ async def receipt(
             "TOTAL_HERE": f"{total:.2f}",
             "BARCODE_HERE": barcode,
             "CARD_LAST4_HERE": str(card_last4),
-            "DATE_FULL_HERE": datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            "DATE_FULL_HERE": apple_date
         }
 
         file_name = f"AirPods_Receipt_{random.randint(1000,9999)}.docx"
@@ -197,7 +241,7 @@ async def receipt(
     file = discord.File(file_name)
 
     await interaction.edit_original_response(
-        content="✅ Your receipt is ready.",
+        content="✅ Receipt ready.",
         attachments=[file]
     )
 
