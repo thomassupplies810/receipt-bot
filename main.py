@@ -45,23 +45,21 @@ def check_cooldown(user_id):
     return 0
 
 # =========================
-# RANDOM DATE GENERATOR
+# RANDOM DATE
 # =========================
 def generate_realistic_datetime():
     now = datetime.datetime.now()
 
-    # Random purchase within last 60 days
     days_ago = random.randint(0, 60)
     dt = now - datetime.timedelta(days=days_ago)
 
-    # Random time
     hour = random.randint(8, 21)
     minute = random.randint(0, 59)
 
     return dt.replace(hour=hour, minute=minute)
 
 # =========================
-# DOCX ENGINE (FIXED + TABLE SUPPORT)
+# DOCX ENGINE (TABLE SUPPORT)
 # =========================
 def generate_receipt(template_path, output_path, data, make_bold=False):
     doc = Document(template_path)
@@ -157,14 +155,14 @@ async def receipt(
 
     price = float(price)
 
-    # 🔥 Generate purchase datetime
+    # Generate purchase datetime
     dt = generate_realistic_datetime()
 
     apple_date = dt.strftime("%b %d, %Y %I:%M %p")
     cologne_date = dt.strftime("%m/%d/%Y")
     cologne_time = dt.strftime("%I:%M %p")
 
-    # 🔥 FIXED RETURN DATE (14 DAYS AFTER PURCHASE)
+    # 🔥 Apple return policy (14 days)
     return_date = dt + datetime.timedelta(days=14)
     return_date_str = return_date.strftime("%b %d, %Y")
 
