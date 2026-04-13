@@ -26,19 +26,19 @@ intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
-# 🧠 STORAGE
+# STORAGE
 # =========================
 user_cooldowns = {}
 user_usage = {}
 
 # =========================
-# 🔐 ROLE CHECK
+# ROLE CHECK
 # =========================
 def has_access(user):
     return any(role.name == ROLE_NAME for role in user.roles)
 
 # =========================
-# ⏱️ COOLDOWN
+# COOLDOWN
 # =========================
 def check_cooldown(user_id):
     now = time.time()
@@ -49,29 +49,30 @@ def check_cooldown(user_id):
     return 0
 
 # =========================
-# 📊 USAGE TRACKING
+# USAGE
 # =========================
 def track_usage(user_id):
     user_usage[user_id] = user_usage.get(user_id, 0) + 1
 
-def get_usage(user_id):
-    return user_usage.get(user_id, 0)
-
 # =========================
-# 🧾 DOCX GENERATOR
+# DOCX GENERATOR (BOLD)
 # =========================
 def generate_receipt(template_path, output_path, data):
     doc = Document(template_path)
 
-    for p in doc.paragraphs:
+    for paragraph in doc.paragraphs:
         for key, value in data.items():
-            if key in p.text:
-                p.text = p.text.replace(key, value)
+            if key in paragraph.text:
+                paragraph.text = paragraph.text.replace(key, value)
+
+                # Force bold
+                for run in paragraph.runs:
+                    run.bold = True
 
     doc.save(output_path)
 
 # =========================
-# 🚀 READY
+# READY
 # =========================
 @bot.event
 async def on_ready():
@@ -79,7 +80,7 @@ async def on_ready():
     await bot.tree.sync()
 
 # =========================
-# 🧾 COMMAND
+# COMMAND
 # =========================
 @bot.tree.command(name="receipt", description="Generate a professional receipt")
 @app_commands.describe(
@@ -101,30 +102,30 @@ async def receipt(
 
     user = interaction.user
 
-    # 🔒 Role check
+    # Role check
     if not has_access(user):
         return await interaction.response.send_message(
             "Access restricted.",
             ephemeral=True
         )
 
-    # ⏱️ Cooldown
+    # Cooldown
     remaining = check_cooldown(user.id)
     if remaining > 0:
         return await interaction.response.send_message(
-            f"Wait {remaining}s before generating again.",
+            f"Please wait {remaining}s before generating another receipt.",
             ephemeral=True
         )
 
     await interaction.response.send_message(
-        "⏳ Generating receipt...",
+        "⏳ Processing your request...",
         ephemeral=True
     )
 
     await asyncio.sleep(1.2)
 
     # =========================
-    # 🧾 COLOGNE AUTOFILL
+    # COLOGNE
     # =========================
     if type.value == "cologne":
 
@@ -150,34 +151,37 @@ async def receipt(
             "BARCODE_NUMBER_HERE": barcode
         }
 
-        output_file = f"receipt_{user.id}.docx"
+        # 🔥 Custom file name
+        random_id = random.randint(1000, 9999)
+        file_name = f"Cologne_Receipt_{random_id}.docx"
 
         generate_receipt(
             "ThomasSupplies_CologneReceipt.docx",
-            output_file,
+            file_name,
             data
         )
 
-        file = discord.File(output_file)
+        file = discord.File(file_name)
 
-    # =========================
-    # 📊 TRACK + SEND
-    # =========================
+    # Track usage
     track_usage(user.id)
 
+    # =========================
+    # FINAL RESPONSE
+    # =========================
     await interaction.edit_original_response(
-        content="✅ Receipt generated successfully.",
+        content="✅ Your receipt is ready.",
         attachments=[file]
     )
 
 # =========================
-# ❌ ERROR HANDLER
+# ERROR HANDLER
 # =========================
 @bot.tree.error
 async def on_app_command_error(interaction, error):
     print(error)
 
 # =========================
-# 🔑 RUN
+# RUN
 # =========================
 bot.run(os.getenv("TOKEN"))
