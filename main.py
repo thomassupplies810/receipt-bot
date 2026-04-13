@@ -5,6 +5,8 @@ import os
 import time
 import asyncio
 import datetime
+import random
+from docx import Document
 
 # =========================
 # ⚙️ CONFIG
@@ -53,13 +55,23 @@ def check_cooldown(user_id):
 # 📊 USAGE TRACKING
 # =========================
 def track_usage(user_id):
-    if user_id in user_usage:
-        user_usage[user_id] += 1
-    else:
-        user_usage[user_id] = 1
+    user_usage[user_id] = user_usage.get(user_id, 0) + 1
 
 def get_usage(user_id):
     return user_usage.get(user_id, 0)
+
+# =========================
+# 🧾 DOCX GENERATOR
+# =========================
+def generate_receipt(template_path, output_path, data):
+    doc = Document(template_path)
+
+    for paragraph in doc.paragraphs:
+        for key, value in data.items():
+            if key in paragraph.text:
+                paragraph.text = paragraph.text.replace(key, value)
+
+    doc.save(output_path)
 
 # =========================
 # 🚀 BOT READY
@@ -81,40 +93,56 @@ async def on_ready():
 # =========================
 # 🧾 COMMAND
 # =========================
-@bot.tree.command(name="receipt", description="Access premium receipt templates")
-@app_commands.describe(type="Select a receipt template")
+@bot.tree.command(name="receipt", description="Generate a receipt")
+@app_commands.describe(
+    type="Select a receipt type",
+    name="Customer name",
+    item="Product name",
+    price="Item price",
+    cash="Cash paid"
+)
 @app_commands.choices(type=[
-    app_commands.Choice(name="Apple", value="apple"),
     app_commands.Choice(name="Cologne", value="cologne"),
-    app_commands.Choice(name="Shoes (Coming Soon)", value="shoes"),
+    app_commands.Choice(name="Apple (Basic)", value="apple"),
 ])
-async def receipt(interaction: discord.Interaction, type: app_commands.Choice[str]):
+async def receipt(
+    interaction: discord.Interaction,
+    type: app_commands.Choice[str],
+    name: str,
+    item: str,
+    price: str,
+    cash: str
+):
 
     user = interaction.user
 
-    # 🔒 Access
+    # 🔒 Access check
     if not has_access(user):
-        embed = discord.Embed(
-            description="Access restricted to Generator Access members.",
-            color=discord.Color.red()
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                description="Access restricted to Generator Access members.",
+                color=discord.Color.red()
+            ),
+            ephemeral=True
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     # ⏱️ Cooldown
     remaining = check_cooldown(user.id)
     if remaining > 0:
-        embed = discord.Embed(
-            description=f"You're generating too quickly. Try again in {remaining}s.",
-            color=discord.Color.orange()
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                description=f"You're generating too quickly. Try again in {remaining}s.",
+                color=discord.Color.orange()
+            ),
+            ephemeral=True
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     # ⏳ Loading
     await interaction.response.send_message(
         embed=discord.Embed(
-            description="⏳ Processing request...\nPreparing your receipt template.",
+            description="⏳ Generating your receipt...\nPlease wait a moment.",
             color=BRAND_COLOR
         ),
         ephemeral=True
@@ -122,85 +150,79 @@ async def receipt(interaction: discord.Interaction, type: app_commands.Choice[st
 
     await asyncio.sleep(1.5)
 
-    # 📂 FILES
-    if type.value == "apple":
-        file = discord.File("ThomasSupplies_AppleReceipt.docx")
-        title = "Apple Receipt"
+    # =========================
+    # 🧾 COLOGNE AUTOFILL
+    # =========================
+    if type.value == "cologne":
 
-        embed = discord.Embed(
-            title="🧾 Apple Receipt Template",
-            description="A professionally structured Apple-style receipt template designed for clean editing and presentation.",
-            color=BRAND_COLOR
+        price = float(price)
+        cash = float(cash)
+
+        tax = round(price * 0.0825, 2)
+        total = round(price + tax, 2)
+        change = round(cash - total, 2)
+
+        barcode = str(random.randint(10**17, 10**20))
+
+        data = {
+            "ITEM_NAME_HERE": item,
+            "SUBTOTAL_HERE": f"{price:.2f}",
+            "TAX_HERE": f"{tax:.2f}",
+            "TOTAL_HERE": f"{total:.2f}",
+            "CASH_HERE": f"{cash:.2f}",
+            "CHANGE_HERE": f"{change:.2f}",
+            "DATE_HERE": datetime.datetime.now().strftime("%m/%d/%Y"),
+            "TIME_HERE": datetime.datetime.now().strftime("%I:%M %p"),
+            "BARCODE_NUMBER_HERE": barcode
+        }
+
+        output_file = f"receipt_{user.id}.docx"
+
+        generate_receipt(
+            "ThomasSupplies_CologneReceipt.docx",
+            output_file,
+            data
         )
 
-        embed.add_field(
-            name="Template Details",
-            value="• Apple-inspired layout\n• Clean formatting\n• Easy customization\n• Microsoft Word compatible",
-            inline=False
-        )
-
-    elif type.value == "cologne":
-        file = discord.File("ThomasSupplies_CologneReceipt.docx")
+        file = discord.File(output_file)
         title = "Cologne Receipt"
 
-        embed = discord.Embed(
-            title="🧾 Fragrance Receipt Template",
-            description="A clean and professional fragrance-style receipt template designed for easy customization.",
-            color=BRAND_COLOR
+    else:
+        await interaction.edit_original_response(
+            embed=discord.Embed(
+                description="This template is not set up for autofill yet.",
+                color=discord.Color.red()
+            )
         )
-
-        embed.add_field(
-            name="Template Details",
-            value="• Retail-style layout\n• Clean structure\n• Editable fields\n• Word compatible",
-            inline=False
-        )
-
-    elif type.value == "shoes":
-        embed = discord.Embed(
-            title="Coming Soon",
-            description="Shoe supplier template is currently in development.",
-            color=BRAND_COLOR
-        )
-        embed.set_footer(text="Thomas Supplies Elite")
-        await interaction.edit_original_response(embed=embed)
         return
 
-    # 📊 Usage
+    # 📊 Track usage
     track_usage(user.id)
     usage_count = get_usage(user.id)
 
-    embed.add_field(
-        name="How To Use",
-        value="1. Open file\n2. Edit details\n3. Save or export",
-        inline=False
+    # 🧾 Final embed
+    embed = discord.Embed(
+        title="🧾 Receipt Generated",
+        description="Your receipt has been successfully generated.",
+        color=BRAND_COLOR
     )
 
-    embed.set_author(
-        name=f"Requested by {user}",
-        icon_url=user.display_avatar.url
-    )
-
-    embed.set_footer(
-        text=f"Thomas Supplies Elite • Uses: {usage_count}"
-    )
+    embed.set_author(name=f"Requested by {user}", icon_url=user.display_avatar.url)
+    embed.set_footer(text=f"Thomas Supplies Elite • Uses: {usage_count}")
 
     await interaction.edit_original_response(
         embed=embed,
         attachments=[file]
     )
 
-    # =========================
-    # 📊 LOGGING
-    # =========================
+    # 📊 Logging
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
-
     if log_channel:
         log_embed = discord.Embed(
             title="📊 Receipt Generated",
             color=BRAND_COLOR,
             timestamp=datetime.datetime.utcnow()
         )
-
         log_embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
         log_embed.add_field(name="Template", value=title, inline=False)
         log_embed.add_field(name="Uses", value=str(usage_count), inline=False)
@@ -214,7 +236,7 @@ async def receipt(interaction: discord.Interaction, type: app_commands.Choice[st
 async def on_app_command_error(interaction: discord.Interaction, error):
 
     embed = discord.Embed(
-        description="An error occurred while generating your receipt. Please try again.",
+        description="An error occurred while generating your receipt.",
         color=discord.Color.red()
     )
 
