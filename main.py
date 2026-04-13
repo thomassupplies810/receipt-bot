@@ -45,25 +45,23 @@ def check_cooldown(user_id):
     return 0
 
 # =========================
-# 🔥 RANDOM DATE GENERATOR
+# RANDOM DATE GENERATOR
 # =========================
 def generate_realistic_datetime():
     now = datetime.datetime.now()
 
-    # Random day within last 60 days
+    # Random purchase within last 60 days
     days_ago = random.randint(0, 60)
-    random_date = now - datetime.timedelta(days=days_ago)
+    dt = now - datetime.timedelta(days=days_ago)
 
-    # Random hour/minute
+    # Random time
     hour = random.randint(8, 21)
     minute = random.randint(0, 59)
 
-    random_date = random_date.replace(hour=hour, minute=minute)
-
-    return random_date
+    return dt.replace(hour=hour, minute=minute)
 
 # =========================
-# 🔥 FIXED DOCX ENGINE (TABLE SUPPORT)
+# DOCX ENGINE (FIXED + TABLE SUPPORT)
 # =========================
 def generate_receipt(template_path, output_path, data, make_bold=False):
     doc = Document(template_path)
@@ -71,7 +69,6 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
     # Paragraphs
     for paragraph in doc.paragraphs:
         full_text = paragraph.text
-
         for key, value in data.items():
             if key in full_text:
                 full_text = full_text.replace(key, value)
@@ -79,17 +76,15 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
         if paragraph.text != full_text:
             paragraph.clear()
             run = paragraph.add_run(full_text)
-
             if make_bold:
                 run.bold = True
 
-    # 🔥 Tables (IMPORTANT)
+    # Tables (IMPORTANT)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
                     full_text = paragraph.text
-
                     for key, value in data.items():
                         if key in full_text:
                             full_text = full_text.replace(key, value)
@@ -97,7 +92,6 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
                     if paragraph.text != full_text:
                         paragraph.clear()
                         run = paragraph.add_run(full_text)
-
                         if make_bold:
                             run.bold = True
 
@@ -109,7 +103,6 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
 @bot.event
 async def on_ready():
     print(f"Bot running as {bot.user}")
-
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} commands")
@@ -121,7 +114,7 @@ async def on_ready():
 # =========================
 @bot.tree.command(name="receipt", description="Generate a professional receipt")
 @app_commands.describe(
-    type="Select receipt type",
+    type="Receipt type",
     product_name="Product name",
     price="Item price",
     amount_paid="Cash paid (cologne only)"
@@ -164,12 +157,16 @@ async def receipt(
 
     price = float(price)
 
-    # 🔥 Generate realistic datetime
+    # 🔥 Generate purchase datetime
     dt = generate_realistic_datetime()
 
     apple_date = dt.strftime("%b %d, %Y %I:%M %p")
     cologne_date = dt.strftime("%m/%d/%Y")
     cologne_time = dt.strftime("%I:%M %p")
+
+    # 🔥 FIXED RETURN DATE (14 DAYS AFTER PURCHASE)
+    return_date = dt + datetime.timedelta(days=14)
+    return_date_str = return_date.strftime("%b %d, %Y")
 
     # =========================
     # COLOGNE
@@ -226,7 +223,8 @@ async def receipt(
             "TOTAL_HERE": f"{total:.2f}",
             "BARCODE_HERE": barcode,
             "CARD_LAST4_HERE": str(card_last4),
-            "DATE_FULL_HERE": apple_date
+            "DATE_FULL_HERE": apple_date,
+            "RETURN_DATE_HERE": return_date_str
         }
 
         file_name = f"AirPods_Receipt_{random.randint(1000,9999)}.docx"
