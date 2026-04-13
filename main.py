@@ -15,12 +15,12 @@ ROLE_NAME = "📄 Generator Access"
 LOG_CHANNEL_ID = 1493091757364088965
 COOLDOWN_TIME = 5
 BRAND_COLOR = 0x1A3DFF
+TAX_RATE = 0.0825
 
 # =========================
 # 🤖 BOT SETUP
 # =========================
 intents = discord.Intents.default()
-intents.message_content = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -41,14 +41,11 @@ def has_access(user):
 # ⏱️ COOLDOWN
 # =========================
 def check_cooldown(user_id):
-    current_time = time.time()
-
+    now = time.time()
     if user_id in user_cooldowns:
-        last_used = user_cooldowns[user_id]
-        if current_time - last_used < COOLDOWN_TIME:
-            return COOLDOWN_TIME - int(current_time - last_used)
-
-    user_cooldowns[user_id] = current_time
+        if now - user_cooldowns[user_id] < COOLDOWN_TIME:
+            return COOLDOWN_TIME - int(now - user_cooldowns[user_id])
+    user_cooldowns[user_id] = now
     return 0
 
 # =========================
@@ -66,89 +63,65 @@ def get_usage(user_id):
 def generate_receipt(template_path, output_path, data):
     doc = Document(template_path)
 
-    for paragraph in doc.paragraphs:
+    for p in doc.paragraphs:
         for key, value in data.items():
-            if key in paragraph.text:
-                paragraph.text = paragraph.text.replace(key, value)
+            if key in p.text:
+                p.text = p.text.replace(key, value)
 
     doc.save(output_path)
 
 # =========================
-# 🚀 BOT READY
+# 🚀 READY
 # =========================
 @bot.event
 async def on_ready():
-    print(f"Receipt+ is online as {bot.user}")
-
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
-    except Exception as e:
-        print(e)
-
-    await bot.change_presence(
-        activity=discord.Game("Receipt+ | Thomas Supplies Elite")
-    )
+    print(f"Receipt+ running as {bot.user}")
+    await bot.tree.sync()
 
 # =========================
 # 🧾 COMMAND
 # =========================
-@bot.tree.command(name="receipt", description="Generate a receipt")
+@bot.tree.command(name="receipt", description="Generate a professional receipt")
 @app_commands.describe(
-    type="Select a receipt type",
-    name="Customer name",
-    item="Product name",
-    price="Item price",
-    cash="Cash paid"
+    type="Select receipt type",
+    product_name="Product purchased",
+    price="Item price (numbers only)",
+    amount_paid="Cash provided"
 )
 @app_commands.choices(type=[
-    app_commands.Choice(name="Cologne", value="cologne"),
-    app_commands.Choice(name="Apple (Basic)", value="apple"),
+    app_commands.Choice(name="Cologne Receipt", value="cologne"),
 ])
 async def receipt(
     interaction: discord.Interaction,
     type: app_commands.Choice[str],
-    name: str,
-    item: str,
+    product_name: str,
     price: str,
-    cash: str
+    amount_paid: str
 ):
 
     user = interaction.user
 
-    # 🔒 Access check
+    # 🔒 Role check
     if not has_access(user):
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                description="Access restricted to Generator Access members.",
-                color=discord.Color.red()
-            ),
+        return await interaction.response.send_message(
+            "Access restricted.",
             ephemeral=True
         )
-        return
 
     # ⏱️ Cooldown
     remaining = check_cooldown(user.id)
     if remaining > 0:
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                description=f"You're generating too quickly. Try again in {remaining}s.",
-                color=discord.Color.orange()
-            ),
+        return await interaction.response.send_message(
+            f"Wait {remaining}s before generating again.",
             ephemeral=True
         )
-        return
 
-    # ⏳ Loading
     await interaction.response.send_message(
-        embed=discord.Embed(
-            description="⏳ Generating your receipt...\nPlease wait a moment.",
-            color=BRAND_COLOR
-        ),
+        "⏳ Generating receipt...",
         ephemeral=True
     )
 
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(1.2)
 
     # =========================
     # 🧾 COLOGNE AUTOFILL
@@ -156,17 +129,18 @@ async def receipt(
     if type.value == "cologne":
 
         price = float(price)
-        cash = float(cash)
+        cash = float(amount_paid)
 
-        tax = round(price * 0.0825, 2)
-        total = round(price + tax, 2)
+        subtotal = price
+        tax = round(subtotal * TAX_RATE, 2)
+        total = round(subtotal + tax, 2)
         change = round(cash - total, 2)
 
         barcode = str(random.randint(10**17, 10**20))
 
         data = {
-            "ITEM_NAME_HERE": item,
-            "SUBTOTAL_HERE": f"{price:.2f}",
+            "ITEM_NAME_HERE": product_name,
+            "SUBTOTAL_HERE": f"{subtotal:.2f}",
             "TAX_HERE": f"{tax:.2f}",
             "TOTAL_HERE": f"{total:.2f}",
             "CASH_HERE": f"{cash:.2f}",
@@ -185,69 +159,22 @@ async def receipt(
         )
 
         file = discord.File(output_file)
-        title = "Cologne Receipt"
 
-    else:
-        await interaction.edit_original_response(
-            embed=discord.Embed(
-                description="This template is not set up for autofill yet.",
-                color=discord.Color.red()
-            )
-        )
-        return
-
-    # 📊 Track usage
+    # =========================
+    # 📊 TRACK + SEND
+    # =========================
     track_usage(user.id)
-    usage_count = get_usage(user.id)
-
-    # 🧾 Final embed
-    embed = discord.Embed(
-        title="🧾 Receipt Generated",
-        description="Your receipt has been successfully generated.",
-        color=BRAND_COLOR
-    )
-
-    embed.set_author(name=f"Requested by {user}", icon_url=user.display_avatar.url)
-    embed.set_footer(text=f"Thomas Supplies Elite • Uses: {usage_count}")
 
     await interaction.edit_original_response(
-        embed=embed,
+        content="✅ Receipt generated successfully.",
         attachments=[file]
     )
-
-    # 📊 Logging
-    log_channel = bot.get_channel(LOG_CHANNEL_ID)
-    if log_channel:
-        log_embed = discord.Embed(
-            title="📊 Receipt Generated",
-            color=BRAND_COLOR,
-            timestamp=datetime.datetime.utcnow()
-        )
-        log_embed.add_field(name="User", value=f"{user} ({user.id})", inline=False)
-        log_embed.add_field(name="Template", value=title, inline=False)
-        log_embed.add_field(name="Uses", value=str(usage_count), inline=False)
-
-        await log_channel.send(embed=log_embed)
 
 # =========================
 # ❌ ERROR HANDLER
 # =========================
 @bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error):
-
-    embed = discord.Embed(
-        description="An error occurred while generating your receipt.",
-        color=discord.Color.red()
-    )
-
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-    except:
-        pass
-
+async def on_app_command_error(interaction, error):
     print(error)
 
 # =========================
