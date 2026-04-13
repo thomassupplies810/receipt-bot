@@ -15,7 +15,9 @@ ROLE_NAME = "📄 Generator Access"
 LOG_CHANNEL_ID = 1493091757364088965
 COOLDOWN_TIME = 5
 BRAND_COLOR = 0x1A3DFF
-TAX_RATE = 0.0825
+
+COLOGNE_TAX = 0.0825
+APPLE_TAX = 0.0904
 
 # =========================
 # 🤖 BOT SETUP
@@ -55,9 +57,9 @@ def track_usage(user_id):
     user_usage[user_id] = user_usage.get(user_id, 0) + 1
 
 # =========================
-# DOCX GENERATOR (BOLD)
+# DOCX GENERATOR
 # =========================
-def generate_receipt(template_path, output_path, data):
+def generate_receipt(template_path, output_path, data, make_bold=False):
     doc = Document(template_path)
 
     for paragraph in doc.paragraphs:
@@ -65,9 +67,10 @@ def generate_receipt(template_path, output_path, data):
             if key in paragraph.text:
                 paragraph.text = paragraph.text.replace(key, value)
 
-                # Force bold
-                for run in paragraph.runs:
-                    run.bold = True
+                # Only bold for cologne receipts
+                if make_bold:
+                    for run in paragraph.runs:
+                        run.bold = True
 
     doc.save(output_path)
 
@@ -87,10 +90,11 @@ async def on_ready():
     type="Select receipt type",
     product_name="Product purchased",
     price="Item price (numbers only)",
-    amount_paid="Cash provided"
+    amount_paid="Cash provided (for cologne)"
 )
 @app_commands.choices(type=[
     app_commands.Choice(name="Cologne Receipt", value="cologne"),
+    app_commands.Choice(name="AirPods Receipt", value="airpods"),
 ])
 async def receipt(
     interaction: discord.Interaction,
@@ -102,14 +106,14 @@ async def receipt(
 
     user = interaction.user
 
-    # Role check
+    # 🔒 Role check
     if not has_access(user):
         return await interaction.response.send_message(
             "Access restricted.",
             ephemeral=True
         )
 
-    # Cooldown
+    # ⏱️ Cooldown
     remaining = check_cooldown(user.id)
     if remaining > 0:
         return await interaction.response.send_message(
@@ -124,16 +128,17 @@ async def receipt(
 
     await asyncio.sleep(1.2)
 
+    price = float(price)
+
     # =========================
     # COLOGNE
     # =========================
     if type.value == "cologne":
 
-        price = float(price)
         cash = float(amount_paid)
 
         subtotal = price
-        tax = round(subtotal * TAX_RATE, 2)
+        tax = round(subtotal * COLOGNE_TAX, 2)
         total = round(subtotal + tax, 2)
         change = round(cash - total, 2)
 
@@ -151,28 +156,74 @@ async def receipt(
             "BARCODE_NUMBER_HERE": barcode
         }
 
-        # 🔥 Custom file name
-        random_id = random.randint(1000, 9999)
-        file_name = f"Cologne_Receipt_{random_id}.docx"
+        file_name = f"Cologne_Receipt_{random.randint(1000,9999)}.docx"
 
         generate_receipt(
             "ThomasSupplies_CologneReceipt.docx",
             file_name,
-            data
+            data,
+            make_bold=True
         )
 
-        file = discord.File(file_name)
+    # =========================
+    # AIRPODS / APPLE
+    # =========================
+    elif type.value == "airpods":
+
+        subtotal = price
+        tax = round(subtotal * APPLE_TAX, 2)
+        total = round(subtotal + tax, 2)
+
+        barcode = str(random.randint(10**17, 10**20))
+        card_last4 = random.randint(1000, 9999)
+
+        data = {
+            "PRODUCT_NAME_HERE": product_name,
+            "PRICE_HERE": f"{price:.2f}",
+            "SUBTOTAL_HERE": f"{subtotal:.2f}",
+            "TAX_HERE": f"{tax:.2f}",
+            "TOTAL_HERE": f"{total:.2f}",
+            "BARCODE_HERE": barcode,
+            "CARD_LAST4_HERE": str(card_last4),
+            "DATE_FULL_HERE": datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        }
+
+        file_name = f"AirPods_Receipt_{random.randint(1000,9999)}.docx"
+
+        generate_receipt(
+            "ThomasSupplies_AppleReceipt.docx",
+            file_name,
+            data,
+            make_bold=False
+        )
+
+    file = discord.File(file_name)
 
     # Track usage
     track_usage(user.id)
 
     # =========================
-    # FINAL RESPONSE
+    # RESPONSE
     # =========================
     await interaction.edit_original_response(
         content="✅ Your receipt is ready.",
         attachments=[file]
     )
+
+    # =========================
+    # LOGGING
+    # =========================
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(
+            title="📊 Receipt Generated",
+            color=BRAND_COLOR,
+            timestamp=datetime.datetime.utcnow()
+        )
+        embed.add_field(name="User", value=f"{user}", inline=False)
+        embed.add_field(name="Type", value=type.value, inline=False)
+
+        await log_channel.send(embed=embed)
 
 # =========================
 # ERROR HANDLER
