@@ -12,7 +12,6 @@ from docx import Document
 # CONFIG
 # =========================
 ROLE_NAME = "📄 Generator Access"
-LOG_CHANNEL_ID = 1493091757364088965
 COOLDOWN_TIME = 5
 
 COLOGNE_TAX = 0.0825
@@ -73,17 +72,22 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
 @bot.event
 async def on_ready():
     print(f"Bot running as {bot.user}")
-    await bot.tree.sync()
+
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands")
+    except Exception as e:
+        print(e)
 
 # =========================
 # COMMAND
 # =========================
-@bot.tree.command(name="receipt", description="Generate a receipt")
+@bot.tree.command(name="receipt", description="Generate a professional receipt")
 @app_commands.describe(
-    type="Receipt type",
-    product_name="Product name",
-    price="Item price",
-    amount_paid="Cash (for cologne only)"
+    type="Select receipt type",
+    product_name="Product name (e.g. AirPods Pro 2)",
+    price="Item price (numbers only)",
+    amount_paid="Cash paid (only used for cologne)"
 )
 @app_commands.choices(type=[
     app_commands.Choice(name="Cologne Receipt", value="cologne"),
@@ -102,7 +106,7 @@ async def receipt(
     # Role check
     if not has_access(user):
         return await interaction.response.send_message(
-            "Access restricted.",
+            "Access restricted to Generator members.",
             ephemeral=True
         )
 
@@ -110,12 +114,12 @@ async def receipt(
     remaining = check_cooldown(user.id)
     if remaining > 0:
         return await interaction.response.send_message(
-            f"Wait {remaining}s before generating again.",
+            f"Please wait {remaining}s before generating another receipt.",
             ephemeral=True
         )
 
     await interaction.response.send_message(
-        "⏳ Generating receipt...",
+        "⏳ Generating your receipt...",
         ephemeral=True
     )
 
@@ -159,7 +163,7 @@ async def receipt(
         )
 
     # =========================
-    # AIRPODS
+    # AIRPODS / APPLE
     # =========================
     elif type.value == "airpods":
 
@@ -193,7 +197,7 @@ async def receipt(
     file = discord.File(file_name)
 
     await interaction.edit_original_response(
-        content="✅ Receipt ready.",
+        content="✅ Your receipt is ready.",
         attachments=[file]
     )
 
