@@ -11,8 +11,10 @@ from docx import Document
 # =========================
 # CONFIG
 # =========================
-ROLE_NAME = "📄 Generator Access"
 COOLDOWN_TIME = 5
+
+# ✅ YOUR REAL ROLE NAMES
+ALLOWED_ROLES = ["🧾 Generator Access", "💎 Premium Access"]
 
 COLOGNE_TAX = 0.0825
 APPLE_TAX = 0.0904
@@ -28,10 +30,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 user_cooldowns = {}
 
 # =========================
-# ROLE CHECK
+# ACCESS CHECK
 # =========================
 def has_access(user):
-    return any(role.name == ROLE_NAME for role in user.roles)
+    return any(role.name in ALLOWED_ROLES for role in user.roles)
 
 # =========================
 # COOLDOWN
@@ -49,7 +51,6 @@ def check_cooldown(user_id):
 # =========================
 def generate_realistic_datetime():
     now = datetime.datetime.now()
-
     days_ago = random.randint(0, 60)
     dt = now - datetime.timedelta(days=days_ago)
 
@@ -77,7 +78,7 @@ def generate_receipt(template_path, output_path, data, make_bold=False):
             if make_bold:
                 run.bold = True
 
-    # Tables (IMPORTANT)
+    # Tables
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -108,30 +109,24 @@ async def on_ready():
         print(e)
 
 # =========================
-# COMMAND
+# RECEIPT COMMAND
 # =========================
-@bot.tree.command(name="receipt", description="Generate a professional receipt")
+@bot.tree.command(name="receipt", description="Generate a receipt")
 @app_commands.describe(
     type="Receipt type",
     product_name="Product name",
     price="Item price",
-    amount_paid="Cash paid (cologne only)"
+    amount_paid="Cash (cologne only)"
 )
 @app_commands.choices(type=[
     app_commands.Choice(name="Cologne Receipt", value="cologne"),
     app_commands.Choice(name="AirPods Receipt", value="airpods"),
 ])
-async def receipt(
-    interaction: discord.Interaction,
-    type: app_commands.Choice[str],
-    product_name: str,
-    price: str,
-    amount_paid: str
-):
+async def receipt(interaction: discord.Interaction, type: app_commands.Choice[str], product_name: str, price: str, amount_paid: str):
 
     user = interaction.user
 
-    # Role check
+    # Access check
     if not has_access(user):
         return await interaction.response.send_message(
             "Access restricted.",
@@ -155,14 +150,14 @@ async def receipt(
 
     price = float(price)
 
-    # Generate purchase datetime
+    # Generate datetime
     dt = generate_realistic_datetime()
 
     apple_date = dt.strftime("%b %d, %Y %I:%M %p")
     cologne_date = dt.strftime("%m/%d/%Y")
     cologne_time = dt.strftime("%I:%M %p")
 
-    # 🔥 Apple return policy (14 days)
+    # Apple return policy (14 days)
     return_date = dt + datetime.timedelta(days=14)
     return_date_str = return_date.strftime("%b %d, %Y")
 
@@ -192,7 +187,7 @@ async def receipt(
             "BARCODE_NUMBER_HERE": barcode
         }
 
-        file_name = f"Cologne_Receipt_{random.randint(1000,9999)}.docx"
+        file_name = f"Cologne_{random.randint(1000,9999)}.docx"
 
         generate_receipt(
             "ThomasSupplies_CologneReceipt.docx",
@@ -225,7 +220,7 @@ async def receipt(
             "RETURN_DATE_HERE": return_date_str
         }
 
-        file_name = f"AirPods_Receipt_{random.randint(1000,9999)}.docx"
+        file_name = f"AirPods_{random.randint(1000,9999)}.docx"
 
         generate_receipt(
             "ThomasSupplies_AppleReceipt.docx",
@@ -240,6 +235,39 @@ async def receipt(
         content="✅ Receipt ready.",
         attachments=[file]
     )
+
+# =========================
+# TICKET RULES COMMAND
+# =========================
+@bot.tree.command(name="setup_rules", description="Send ticket rules")
+async def setup_rules(interaction: discord.Interaction):
+
+    embed = discord.Embed(
+        title="🎟 VIP Support Ticket Rules",
+        description=(
+            "**📌 Ticket Guidelines**\n"
+            "• One ticket per issue\n"
+            "• Explain clearly\n"
+            "• Include proof\n"
+            "• No spam\n"
+            "• Be respectful\n\n"
+
+            "**✅ Valid Reasons**\n"
+            "• Access issues\n"
+            "• Purchase problems\n"
+            "• Missing roles\n\n"
+
+            "**❌ Invalid Reasons**\n"
+            "• Free requests\n"
+            "• Spam\n"
+            "• Self-promo\n\n"
+
+            "⚠️ Abuse may result in removal."
+        ),
+        color=0x2f6bff
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 # =========================
 # ERROR HANDLER
